@@ -1,128 +1,120 @@
-# Importing the necessary modules from the chromadb package:
-# chromadb is used to interact with the Chroma DB database,
-# embedding_functions is used to define the embedding model
+# chromadb lets us store and search documents.
+# embedding_functions provides the model that converts text into embeddings.
 import chromadb
 from chromadb.utils import embedding_functions
 
-# Define the embedding function using SentenceTransformers
-ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+
+# Use a Sentence Transformers model to convert text into numbers (embeddings).
+embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="all-MiniLM-L6-v2"
 )
 
-
-# Create a new instance of ChromaClient to interact with the Chroma DB
+# Create a client for interacting with ChromaDB.
 client = chromadb.Client()
 
-# Define the name for the collection to be created or retrieved
+# A collection is similar to a table: it stores related documents.
 collection_name = "my_grocery_collection"
 
 
-# Define the main function to interact with the Chroma DB
 def main():
+    """Create a collection, add grocery documents, and search the collection."""
     try:
-        # Create a collection in the Chroma database with a specified name, 
-        # distance metric, and embedding function. In this case, we are using 
-        # cosine distance
+        # Create a collection and configure it to use cosine distance.
         collection = client.create_collection(
             name=collection_name,
             metadata={"description": "A collection for storing grocery data"},
             configuration={
                 "hnsw": {"space": "cosine"},
-                "embedding_function": ef
-            }
+                "embedding_function": embedding_function,
+            },
         )
         print(f"Collection created: {collection.name}")
-        
-        
-        # Array of grocery-related text items
+
+        # These are the documents that will be stored and searched.
         texts = [
-            'fresh red apples',
-            'organic bananas',
-            'ripe mangoes',
-            'whole wheat bread',
-            'farm-fresh eggs',
-            'natural yogurt',
-            'frozen vegetables',
-            'grass-fed beef',
-            'free-range chicken',
-            'fresh salmon fillet',
-            'aromatic coffee beans',
-            'pure honey',
-            'golden apple',
-            'red fruit'
+            "fresh red apples",
+            "organic bananas",
+            "ripe mangoes",
+            "whole wheat bread",
+            "farm-fresh eggs",
+            "natural yogurt",
+            "frozen vegetables",
+            "grass-fed beef",
+            "free-range chicken",
+            "fresh salmon fillet",
+            "aromatic coffee beans",
+            "pure honey",
+            "golden apple",
+            "red fruit",
         ]
-        
-        # Create a list of unique IDs for each text item in the 'texts' array
-        # Each ID follows the format 'food_<index>', where <index> starts from 1
-        ids = [f"food_{index + 1}" for index, _ in enumerate(texts)]
-        
-        # Add documents and their corresponding IDs to the collection
-        # The `add` method inserts the data into the collection
-        # The documents are the actual text items, and the IDs are unique identifiers
-        # ChromaDB will automatically generate embeddings using the configured embedding function
+
+        # Create one unique ID for each document.
+        ids = []
+        for number in range(len(texts)):
+            ids.append(f"food_{number + 1}")
+
+        # Create one metadata dictionary for each document.
+        # The metadata at position 0 belongs to the document at position 0.
+        metadatas = []
+        for text in texts:
+            metadatas.append({"source": "grocery_store", "item": text})
+
+        # Store the documents, metadata, and IDs in the collection.
+        # ChromaDB creates the document embeddings automatically.
         collection.add(
             documents=texts,
-            metadatas = [
-                {"source": "grocery_store", "item": text}
-                for text in texts
-            ], # "_" loop variable isn't used, so we use "_" to indicate that we don't care about its value
-            ids=ids
+            metadatas=metadatas,
+            ids=ids,
         )
-        
-        
-        # Retrieve all the items (documents) stored in the collection
-        # The `get` method fetches all data from the collection
+
+        # Retrieve the stored documents so we can display the total count.
         all_items = collection.get()
-        # Log the retrieved items to the console for inspection
-        # This will print out all the documents, IDs, and metadata stored in the collection
         print("Collection contents:")
         print(f"Number of documents: {len(all_items['documents'])}")
-        
-        
-        
+
         perform_similarity_search(collection)
-    except Exception as error:  # Catch any errors and log them to the console
+    except Exception as error:
         print(f"Error: {error}")
 
 
-# Function to perform a similarity search in the collection
 def perform_similarity_search(collection):
+    """Search for documents related to the word 'apple'."""
     try:
-        ## Define the query term you want to search for in the collection
+        # This is the text that we want to search for.
         query_term = "apple"
+
         results = collection.query(
             query_texts=[query_term],
-            n_results=3  # Retrieve top 3 results
+            n_results=3,
         )
-        print(f"Query results for '{query_term}':")
-        print(results)
-        
-            # Check if no results are returned or if the results array is empty
-        if not results or not results['ids'] or len(results['ids'][0]) == 0:
-            # Log a message indicating that no similar documents were found for the query term
+
+        # ChromaDB returns a list for each query. We submitted one query,
+        # so [0] selects the results belonging to that first query.
+        query_ids = results["ids"][0]
+        query_distances = results["distances"][0]
+        query_documents = results["documents"][0]
+
+        if len(query_ids) == 0:
             print(f'No documents found similar to "{query_term}"')
             return
-        
-        
-        
-        print(f'Top 3 similar documents to "{query_term}":')
-        # Access the nested arrays in 'results["ids"]' and 'results["distances"]'
-        for i in range(min(3, len(results['ids'][0]))):
-            doc_id = results['ids'][0][i]  # Get ID from 'ids' array
-            score = results['distances'][0][i]  # Get score from 'distances' array
-            # Retrieve text data from the results
-            text = results['documents'][0][i]
+
+        print(f'Top {len(query_ids)} similar documents to "{query_term}":')
+
+        # The ID, distance, and document at the same index belong together.
+        for index in range(len(query_ids)):
+            doc_id = query_ids[index]
+            distance = query_distances[index]
+            text = query_documents[index]
+
             if not text:
-                print(f' - ID: {doc_id}, Text: "Text not available", Score: {score:.4f}')
-            else:
-                print(f' - ID: {doc_id}, Text: "{text}", Score: {score:.4f}')
+                text = "Text not available"
 
-
-
-        pass
+            print(
+                f' - ID: {doc_id}, Text: "{text}", '
+                f"Distance: {distance:.4f}"
+            )
     except Exception as error:
         print(f"Error in similarity search: {error}")
-
 
 
 if __name__ == "__main__":
